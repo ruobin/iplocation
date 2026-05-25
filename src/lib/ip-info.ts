@@ -57,6 +57,24 @@ export async function getIPInfo(
   ip: string,
   acceptLanguage: string | null
 ): Promise<IPInfo> {
+  if (isPrivateIP(ip)) {
+    return {
+      ip,
+      city: "—",
+      region: "—",
+      country: "—",
+      countryCode: "—",
+      isp: "—",
+      org: "—",
+      timezone: "—",
+      lat: null,
+      lon: null,
+      isProxy: false,
+      isHosting: false,
+      isMobile: false,
+    };
+  }
+
   try {
     const res = await fetch(`http://ip-api.com/json/${ip}?fields=66846719`, {
       next: { revalidate: 60 },

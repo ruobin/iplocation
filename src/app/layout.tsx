@@ -16,6 +16,18 @@ export const metadata: Metadata = {
   title: "IP Lookup — Your IP Address Details",
   description:
     "View your IP address, location, browser, ISP, and device information. Clean, private, ad-free.",
+  openGraph: {
+    title: "IP Lookup — Your IP Address Details",
+    description:
+      "View your IP address, location, browser, ISP, and device information. Clean, private, ad-free.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "IP Lookup — Your IP Address Details",
+    description:
+      "View your IP address, location, browser, ISP, and device information. Clean, private, ad-free.",
+  },
 };
 
 export default function RootLayout({
