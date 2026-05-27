@@ -127,6 +127,8 @@ Open [http://localhost:3000](http://localhost:3000). The IP shown will be `127.0
 
 ## Deployment
 
+### Vercel (zero-config)
+
 Optimized for [Vercel](https://vercel.com). Set `NEXT_PUBLIC_BASE_URL` to your production domain if you add canonical URL metadata. No environment variables are required for basic operation.
 
 ```bash
@@ -135,3 +137,159 @@ npm run start
 ```
 
 Vercel and most reverse proxies (nginx, Cloudflare) set `x-forwarded-for` automatically, so IP detection works without any extra configuration.
+
+### Ubuntu VPS (systemd + nginx)
+
+Tested on Ubuntu 22.04 / 24.04 LTS. Replace `iplookup.example.com` with your domain and `deploy` with your service user.
+
+#### 1. Install Node.js 20 LTS
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs git
+node -v   # should print v20.x
+```
+
+#### 2. Create an unprivileged service user
+
+```bash
+sudo adduser --system --group --home /var/www/iplocation deploy
+sudo mkdir -p /var/www/iplocation
+sudo chown -R deploy:deploy /var/www/iplocation
+```
+
+#### 3. Clone, build, and prune
+
+```bash
+sudo -u deploy -H bash <<'EOF'
+cd /var/www/iplocation
+git clone https://github.com/YOUR_USER/iplocation.git .
+npm ci
+npm run build
+npm prune --production
+EOF
+```
+
+#### 4. Create the systemd unit
+
+Write `/etc/systemd/system/iplocation.service`:
+
+```ini
+[Unit]
+Description=IP Lookup (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/iplocation
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iplocation
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/iplocation/.next
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now iplocation
+sudo systemctl status iplocation
+journalctl -u iplocation -f   # tail logs
+```
+
+#### 5. nginx reverse proxy
+
+Write `/etc/nginx/sites-available/iplocation`:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name iplookup.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+Enable it:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/iplocation /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+> The `X-Forwarded-For` header is what `src/app/page.tsx` reads to detect the visitor's IP. Without it, every visitor would appear as `127.0.0.1`.
+
+#### 6. HTTPS via Let's Encrypt
+
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d iplookup.example.com --redirect --agree-tos -m you@example.com
+sudo systemctl status certbot.timer   # auto-renewal
+```
+
+#### 7. Firewall
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+#### Updating to a new release
+
+```bash
+sudo -u deploy -H bash <<'EOF'
+cd /var/www/iplocation
+git pull --ff-only
+npm ci
+npm run build
+npm prune --production
+EOF
+sudo systemctl restart iplocation
+```
+
+#### Common operations
+
+| Task | Command |
+|---|---|
+| Restart app | `sudo systemctl restart iplocation` |
+| View live logs | `sudo journalctl -u iplocation -f` |
+| Last 200 log lines | `sudo journalctl -u iplocation -n 200 --no-pager` |
+| Check listening port | `sudo ss -tlnp \| grep 3000` |
+| Reload nginx | `sudo systemctl reload nginx` |
+| Test nginx config | `sudo nginx -t` |
