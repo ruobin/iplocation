@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { getIPInfo, parseUserAgent, isPrivateIP, type IPInfo } from "@/lib/ip-info";
 import { ClientInfoSection } from "./client-info";
+import { LookupBox } from "./lookup-box";
 
 function getClientIP(headersList: Headers): string {
   const forwarded = headersList.get("x-forwarded-for");
@@ -90,6 +91,9 @@ export default async function Home() {
           </div>
         )}
       </div>
+
+      {/* Lookup */}
+      <LookupBox />
 
       {/* Location */}
       <section className="mb-10">
