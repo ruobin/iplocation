@@ -1,6 +1,6 @@
 # IP Lookup
 
-A clean, private, ad-free tool that shows visitors their IP address, geolocation, ISP, browser, OS, and device details in one page — including an interactive OpenStreetMap for the detected coordinates. A query box lets anyone look up any IP or domain on demand. No tracking. No ads. No logs stored.
+A clean, private, ad-free tool that shows visitors their IP address, geolocation, ISP, browser, OS, and device details — including an interactive OpenStreetMap for the detected coordinates. A dedicated lookup page lets anyone query any IP or domain by name, with server-rendered results at a shareable URL. No tracking. No ads. No logs stored.
 
 ## System Design
 
@@ -10,19 +10,25 @@ Browser
   ▼
 Next.js Server (App Router)
   │
-  ├─ page.tsx (async Server Component)
+  ├─ layout.tsx
+  │     └─ <Nav> — sticky navbar, "My IP" + "Lookup" links (Client Component)
+  │
+  ├─ / — page.tsx (async Server Component)
   │     ├─ reads x-forwarded-for / x-real-ip from request headers
   │     ├─ calls getIPInfo() → ip-api.com REST API
   │     ├─ calls parseUserAgent() (pure, no I/O)
-  │     └─ renders: Location (+ map), Network, Browser & OS, LookupBox
+  │     └─ renders: Location (+ map), Network, Browser & OS, Device, Privacy
   │
-  ├─ lookup-box.tsx (Client Component)
-  │     ├─ query input — accepts any IPv4, IPv6, or domain
-  │     ├─ calls GET /api/lookup?q=... on submit
-  │     └─ renders results: Location (+ map), Network
+  ├─ /lookup — lookup/page.tsx (Server Component)
+  │     └─ search form, navigates to /lookup/[query] on submit
   │
-  ├─ api/lookup/route.ts (API Route)
-  │     └─ proxies ip-api.com for arbitrary IP/domain queries
+  ├─ /lookup/[query] — lookup/[query]/page.tsx (async Server Component)
+  │     ├─ decodes query param (IPv4, IPv6, or domain)
+  │     ├─ calls getIPInfo() → ip-api.com REST API
+  │     └─ renders: IP highlight, Location (+ map), Network
+  │
+  ├─ /api/lookup — api/lookup/route.ts (API Route)
+  │     └─ GET ?q= — proxies ip-api.com, returns IPInfo JSON
   │
   ├─ map-embed.tsx (shared component)
   │     └─ renders OpenStreetMap iframe for given lat/lon
@@ -50,18 +56,23 @@ The page is a Next.js **async Server Component** by default. IP and UA data are 
 ```
 src/
 ├── app/
-│   ├── layout.tsx              # Root layout — fonts, metadata, OG/Twitter tags
-│   ├── page.tsx                # Async Server Component — IP/UA render
-│   ├── client-info.tsx         # Client Component — device & privacy sections
-│   ├── lookup-box.tsx          # Client Component — IP/domain query box + results
-│   ├── map-embed.tsx           # Shared component — OpenStreetMap iframe
-│   ├── api/lookup/route.ts     # GET /api/lookup?q= — arbitrary IP/domain lookup
-│   ├── loading.tsx             # Suspense skeleton shown during SSR fetch
-│   ├── error.tsx               # Error boundary for API failures
-│   ├── robots.ts               # Generates /robots.txt
-│   └── globals.css             # CSS custom properties, Tailwind v4 theme
+│   ├── layout.tsx                    # Root layout — Nav, fonts, metadata, OG/Twitter tags
+│   ├── nav.tsx                       # Client Component — sticky navbar with active-link state
+│   ├── page.tsx                      # / — async Server Component, visitor's own IP
+│   ├── client-info.tsx               # Client Component — device & privacy sections
+│   ├── map-embed.tsx                 # Shared component — OpenStreetMap iframe
+│   ├── lookup/
+│   │   ├── page.tsx                  # /lookup — search landing page
+│   │   ├── search-form.tsx           # Client Component — input + router.push navigation
+│   │   └── [query]/
+│   │       └── page.tsx              # /lookup/[query] — server-rendered lookup result
+│   ├── api/lookup/route.ts           # GET /api/lookup?q= — IP/domain lookup JSON API
+│   ├── loading.tsx                   # Suspense skeleton shown during SSR fetch
+│   ├── error.tsx                     # Error boundary for API failures
+│   ├── robots.ts                     # Generates /robots.txt
+│   └── globals.css                   # CSS custom properties, Tailwind v4 theme
 └── lib/
-    └── ip-info.ts              # Types + getIPInfo() + parseUserAgent() + isPrivateIP()
+    └── ip-info.ts                    # Types + getIPInfo() + parseUserAgent() + isPrivateIP()
 ```
 
 ## Key Functionalities
@@ -72,17 +83,25 @@ src/
 - `isPrivateIP(ip)` — detects RFC-1918 ranges (10.x, 172.16–31.x, 192.168.x), loopback (127.x), link-local (169.254.x), and IPv6 loopback/link-local. Private IPs short-circuit `getIPInfo` without hitting the external API.
 - `parseUserAgent(ua)` — pure-function regex parser covering Windows, macOS, iOS, iPadOS, Android, ChromeOS, Linux; Edge, Opera, Brave, Chrome, Safari, Firefox.
 
-### IP/Domain Lookup (`src/app/lookup-box.tsx` + `src/app/api/lookup/route.ts`)
+### Navigation (`src/app/nav.tsx`)
 
-A client-side query box accepts any IPv4 address, IPv6 address, or domain name (e.g. `8.8.8.8`, `2606:4700::`, `google.com`). On submit it calls `GET /api/lookup?q=<input>`, which proxies ip-api.com and returns the same `IPInfo` shape used by the server-side render. Results include a full Location grid, Network grid, and map. Private/local IPs are rejected with a 400 error. Submit fires on button click or Enter key.
+A sticky client-side navbar rendered in the root layout. Uses `usePathname()` to highlight the active link (`/` → "My IP", `/lookup*` → "Lookup") with an accent background tint. Sits above all pages with a semi-transparent `backdrop-blur` background.
+
+### IP/Domain Lookup (`src/app/lookup/`)
+
+Two-level route:
+- **`/lookup`** (`lookup/page.tsx`) — search landing with a `SearchForm` client component that calls `router.push('/lookup/<query>')` on submit.
+- **`/lookup/[query]`** (`lookup/[query]/page.tsx`) — async Server Component. Decodes the URL param, calls `getIPInfo()` directly (no client round-trip), and renders a full result page: IP highlight, Location grid + map, Network grid. Pre-fills the search form with the current query for easy re-search. Handles private IPs and unresolvable queries with inline error states. URLs are shareable (e.g. `/lookup/8.8.8.8`, `/lookup/google.com`).
+
+`/api/lookup` (`api/lookup/route.ts`) remains available for programmatic JSON access.
 
 ### Interactive Map (`src/app/map-embed.tsx`)
 
 Renders an OpenStreetMap `<iframe>` embed centered on the provided `lat`/`lon` with a `±0.08°` bounding box and a pin marker. Displayed in the Location section for both the visitor's own IP and any manual lookup result (only when coordinates are available). No API key required. A "View on OpenStreetMap" link opens the full map in a new tab.
 
-### Server Component render (`src/app/page.tsx`)
+### Home page (`src/app/page.tsx`)
 
-Reads `x-forwarded-for` and `x-real-ip` headers (set by Vercel / nginx / Cloudflare). Renders: Location (6 fields + map), Network (3 fields), Browser & OS (3 fields), IP/Domain Lookup box.
+Reads `x-forwarded-for` and `x-real-ip` headers (set by Vercel / nginx / Cloudflare). Renders the visitor's own IP exclusively: Location (6 fields + map), Network (3 fields), Browser & OS (3 fields), then hands off to `ClientInfoSection` for device and privacy data.
 
 ### Client Component hydration (`src/app/client-info.tsx`)
 
