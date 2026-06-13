@@ -1,7 +1,7 @@
+import Link from "next/link";
 import { headers } from "next/headers";
 import { getIPInfo, parseUserAgent, isPrivateIP, type IPInfo } from "@/lib/ip-info";
 import { ClientInfoSection } from "./client-info";
-import { LookupBox } from "./lookup-box";
 import { MapEmbed } from "./map-embed";
 
 function getClientIP(headersList: Headers): string {
@@ -91,10 +91,15 @@ export default async function Home() {
               .join(", ")}
           </div>
         )}
+        <div className="mt-5">
+          <Link
+            href="/lookup"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90"
+          >
+            Look up any IP or domain →
+          </Link>
+        </div>
       </div>
-
-      {/* Lookup */}
-      <LookupBox />
 
       {/* Location */}
       <section className="mb-10">
