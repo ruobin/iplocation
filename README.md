@@ -79,8 +79,22 @@ src/
 
 ### IP Geolocation (`src/lib/ip-info.ts`)
 
-- `getIPInfo(ip, acceptLanguage)` — fetches ip-api.com with `fields=66846719` (city, region, country, ISP, org, timezone, lat/lon, proxy, hosting, mobile flags). Response is cached by the Next.js Data Cache for 60 seconds.
-- `isPrivateIP(ip)` — detects RFC-1918 ranges (10.x, 172.16–31.x, 192.168.x), loopback (127.x), link-local (169.254.x), and IPv6 loopback/link-local. Private IPs short-circuit `getIPInfo` without hitting the external API.
+`getIPInfo(ip, acceptLanguage)` fetches **both** ipinfo.io and ip-api.com in parallel and merges the results:
+
+| Field | Preferred source | Reason |
+|---|---|---|
+| City, Region | ipinfo.io | More accurate geolocation |
+| Coordinates (lat/lon) | ipinfo.io | More accurate geolocation |
+| Timezone | ipinfo.io | More accurate geolocation |
+| Country name | ip-api.com | ipinfo.io only returns the 2-letter code |
+| Country code | ipinfo.io | — |
+| ISP | ip-api.com | ipinfo.io combines ASN + org into one field |
+| Org | ipinfo.io | Cleaner combined ASN + name string |
+| Proxy / VPN / Hosting / Mobile | ip-api.com | Not available in ipinfo.io free tier |
+
+Either source can fail independently — if one returns an error, fields fall back to the other. Both responses are cached for 60 seconds via the Next.js Data Cache. Set `IPINFO_TOKEN` in the environment to authenticate with ipinfo.io for higher rate limits.
+
+- `isPrivateIP(ip)` — detects RFC-1918 ranges (10.x, 172.16–31.x, 192.168.x), loopback (127.x), link-local (169.254.x), and IPv6 loopback/link-local. Private IPs short-circuit `getIPInfo` without hitting either API.
 - `parseUserAgent(ua)` — pure-function regex parser covering Windows, macOS, iOS, iPadOS, Android, ChromeOS, Linux; Edge, Opera, Brave, Chrome, Safari, Firefox.
 
 ### Navigation (`src/app/nav.tsx`)
@@ -121,7 +135,7 @@ CSS custom properties in `globals.css` provide a full light/dark palette (`--bg`
 | `@tailwindcss/postcss` | ^4 | PostCSS integration for Tailwind v4 |
 | `typescript` | ^5 | Type safety |
 | `eslint` + `eslint-config-next` | ^9 / 16.2.6 | Linting |
-| **External API** | — | [ip-api.com](https://ip-api.com) — free tier, 45 req/min, HTTP only |
+| **External APIs** | — | [ipinfo.io](https://ipinfo.io) — free tier, 50k req/month; [ip-api.com](https://ip-api.com) — free tier, 45 req/min, HTTP only |
 
 No additional runtime dependencies. No database. No auth.
 
@@ -140,7 +154,10 @@ No additional runtime dependencies. No database. No auth.
 
 ### Rate limits
 
-ip-api.com free tier allows **45 requests/minute**. The Next.js Data Cache (`revalidate: 60`) deduplicates identical IP lookups within a 60-second window on the same server instance. For higher traffic, consider upgrading to the ip-api.com Pro plan or adding a Redis-backed cache layer.
+- **ipinfo.io** free tier: 50,000 requests/month. Set `IPINFO_TOKEN` to authenticate and increase limits.
+- **ip-api.com** free tier: 45 requests/minute (HTTP only).
+
+The Next.js Data Cache (`revalidate: 60`) deduplicates identical lookups within a 60-second window, so sustained traffic for the same IP only hits each API once per minute. For higher traffic, consider upgrading to ip-api.com Pro or adding a Redis-backed cache layer.
 
 ### Private/local IPs
 

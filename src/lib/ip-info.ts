@@ -53,67 +53,108 @@ export function isPrivateIP(ip: string): boolean {
   );
 }
 
+const EMPTY: IPInfo = {
+  ip: "—",
+  city: "—",
+  region: "—",
+  country: "—",
+  countryCode: "—",
+  isp: "—",
+  org: "—",
+  timezone: "—",
+  lat: null,
+  lon: null,
+  isProxy: false,
+  isHosting: false,
+  isMobile: false,
+};
+
+async function fetchIpApi(ip: string): Promise<IPInfo | null> {
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=66846719`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return {
+      ip: d.query ?? ip,
+      city: d.city ?? "—",
+      region: d.regionName ?? "—",
+      country: d.country ?? "—",
+      countryCode: d.countryCode ?? "—",
+      isp: d.isp ?? "—",
+      org: d.org ?? "—",
+      timezone: d.timezone ?? "—",
+      lat: d.lat ?? null,
+      lon: d.lon ?? null,
+      isProxy: d.proxy ?? false,
+      isHosting: d.hosting ?? false,
+      isMobile: d.mobile ?? false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchIpInfo(ip: string): Promise<Partial<IPInfo> | null> {
+  try {
+    const token = process.env.IPINFO_TOKEN;
+    const url = token
+      ? `https://ipinfo.io/${ip}/json?token=${token}`
+      : `https://ipinfo.io/${ip}/json`;
+    const res = await fetch(url, { next: { revalidate: 60 } });
+    if (!res.ok) return null;
+    const d = await res.json();
+
+    const [lat, lon] = (d.loc ?? "").split(",").map(Number);
+    return {
+      ip: d.ip ?? ip,
+      city: d.city ?? undefined,
+      region: d.region ?? undefined,
+      countryCode: d.country ?? undefined,
+      org: d.org ?? undefined,
+      timezone: d.timezone ?? undefined,
+      lat: isNaN(lat) ? undefined : lat,
+      lon: isNaN(lon) ? undefined : lon,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function val(a: string | undefined, b: string | undefined): string {
+  return (a && a !== "—") ? a : (b ?? "—");
+}
+
 export async function getIPInfo(
   ip: string,
   acceptLanguage: string | null
 ): Promise<IPInfo> {
   if (isPrivateIP(ip)) {
-    return {
-      ip,
-      city: "—",
-      region: "—",
-      country: "—",
-      countryCode: "—",
-      isp: "—",
-      org: "—",
-      timezone: "—",
-      lat: null,
-      lon: null,
-      isProxy: false,
-      isHosting: false,
-      isMobile: false,
-    };
+    return { ...EMPTY, ip };
   }
 
-  try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=66846719`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) throw new Error(`ip-api returned ${res.status}`);
-    const data = await res.json();
+  const [ipApi, ipInfo] = await Promise.all([fetchIpApi(ip), fetchIpInfo(ip)]);
 
-    return {
-      ip: data.query ?? ip,
-      city: data.city ?? "—",
-      region: data.regionName ?? "—",
-      country: data.country ?? "—",
-      countryCode: data.countryCode ?? "—",
-      isp: data.isp ?? "—",
-      org: data.org ?? "—",
-      timezone: data.timezone ?? "—",
-      lat: data.lat ?? null,
-      lon: data.lon ?? null,
-      isProxy: data.proxy ?? false,
-      isHosting: data.hosting ?? false,
-      isMobile: data.mobile ?? false,
-    };
-  } catch {
-    return {
-      ip,
-      city: "—",
-      region: "—",
-      country: "—",
-      countryCode: "—",
-      isp: "—",
-      org: "—",
-      timezone: "—",
-      lat: null,
-      lon: null,
-      isProxy: false,
-      isHosting: false,
-      isMobile: false,
-    };
-  }
+  if (!ipApi && !ipInfo) return { ...EMPTY, ip };
+
+  // ipinfo.io is preferred for city/region/coords/timezone (more accurate);
+  // ip-api.com is used for full country name, ISP, and proxy/hosting/mobile flags.
+  return {
+    ip: ipInfo?.ip ?? ipApi?.ip ?? ip,
+    city: val(ipInfo?.city, ipApi?.city),
+    region: val(ipInfo?.region, ipApi?.region),
+    country: ipApi?.country ?? "—",
+    countryCode: val(ipInfo?.countryCode, ipApi?.countryCode),
+    isp: ipApi?.isp ?? "—",
+    org: val(ipInfo?.org, ipApi?.org),
+    timezone: val(ipInfo?.timezone, ipApi?.timezone),
+    lat: ipInfo?.lat ?? ipApi?.lat ?? null,
+    lon: ipInfo?.lon ?? ipApi?.lon ?? null,
+    isProxy: ipApi?.isProxy ?? false,
+    isHosting: ipApi?.isHosting ?? false,
+    isMobile: ipApi?.isMobile ?? false,
+  };
 }
 
 export function parseUserAgent(userAgent: string | null): BrowserInfo {

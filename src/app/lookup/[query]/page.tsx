@@ -128,9 +128,9 @@ export default async function LookupResultPage({
 
       <footer className="mt-8 border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--text-muted)]">
         IP data via{" "}
-        <a href="https://ip-api.com/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[var(--text)]">
-          ip-api
-        </a>
+        <a href="https://ipinfo.io/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[var(--text)]">ipinfo.io</a>
+        {" and "}
+        <a href="https://ip-api.com/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[var(--text)]">ip-api.com</a>
         {" · "}
         <Link href="/" className="underline underline-offset-2 hover:text-[var(--text)]">
           View your IP

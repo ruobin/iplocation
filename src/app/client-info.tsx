@@ -149,14 +149,9 @@ export function ClientInfoSection({ ipInfo }: { ipInfo: IPInfo }) {
       <footer className="mt-16 border-t border-[var(--border)] pt-8 text-center">
         <p className="text-xs text-[var(--text-muted)]">
           IP data via{" "}
-          <a
-            href="https://ip-api.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-[var(--text)]"
-          >
-            ip-api
-          </a>
+          <a href="https://ipinfo.io/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[var(--text)]">ipinfo.io</a>
+          {" and "}
+          <a href="https://ip-api.com/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-[var(--text)]">ip-api.com</a>
           . No tracking. No ads. No logs stored.
         </p>
       </footer>
