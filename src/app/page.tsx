@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { getIPInfo, parseUserAgent, isPrivateIP, type IPInfo } from "@/lib/ip-info";
 import { ClientInfoSection } from "./client-info";
 import { LookupBox } from "./lookup-box";
+import { MapEmbed } from "./map-embed";
 
 function getClientIP(headersList: Headers): string {
   const forwarded = headersList.get("x-forwarded-for");
@@ -114,6 +115,9 @@ export default async function Home() {
           />
           <InfoCard label="Timezone" value={ipInfo.timezone} mono />
         </div>
+        {ipInfo.lat !== null && ipInfo.lon !== null && (
+          <MapEmbed lat={ipInfo.lat} lon={ipInfo.lon} />
+        )}
       </section>
 
       {/* Network */}

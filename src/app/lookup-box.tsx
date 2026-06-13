@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import type { IPInfo } from "@/lib/ip-info";
+import { MapEmbed } from "./map-embed";
 
 function InfoCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -122,6 +123,9 @@ export function LookupBox() {
               />
               <InfoCard label="Timezone" value={result.timezone} mono />
             </div>
+            {result.lat !== null && result.lon !== null && (
+              <MapEmbed lat={result.lat} lon={result.lon} />
+            )}
           </div>
 
           <div>

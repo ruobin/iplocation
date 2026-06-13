@@ -1,6 +1,6 @@
 # IP Lookup
 
-A clean, private, ad-free tool that shows visitors their IP address, geolocation, ISP, browser, OS, and device details in one page. No tracking. No logs stored.
+A clean, private, ad-free tool that shows visitors their IP address, geolocation, ISP, browser, OS, and device details in one page — including an interactive OpenStreetMap for the detected coordinates. A query box lets anyone look up any IP or domain on demand. No tracking. No ads. No logs stored.
 
 ## System Design
 
@@ -14,7 +14,18 @@ Next.js Server (App Router)
   │     ├─ reads x-forwarded-for / x-real-ip from request headers
   │     ├─ calls getIPInfo() → ip-api.com REST API
   │     ├─ calls parseUserAgent() (pure, no I/O)
-  │     └─ renders static sections: Location, Network, Browser & OS
+  │     └─ renders: Location (+ map), Network, Browser & OS, LookupBox
+  │
+  ├─ lookup-box.tsx (Client Component)
+  │     ├─ query input — accepts any IPv4, IPv6, or domain
+  │     ├─ calls GET /api/lookup?q=... on submit
+  │     └─ renders results: Location (+ map), Network
+  │
+  ├─ api/lookup/route.ts (API Route)
+  │     └─ proxies ip-api.com for arbitrary IP/domain queries
+  │
+  ├─ map-embed.tsx (shared component)
+  │     └─ renders OpenStreetMap iframe for given lat/lon
   │
   └─ client-info.tsx (Client Component, hydrated in browser)
         ├─ reads navigator / screen / window APIs
@@ -39,15 +50,18 @@ The page is a Next.js **async Server Component** by default. IP and UA data are 
 ```
 src/
 ├── app/
-│   ├── layout.tsx          # Root layout — fonts, metadata, OG/Twitter tags
-│   ├── page.tsx            # Async Server Component — IP/UA render
-│   ├── client-info.tsx     # Client Component — device & privacy sections
-│   ├── loading.tsx         # Suspense skeleton shown during SSR fetch
-│   ├── error.tsx           # Error boundary for API failures
-│   ├── robots.ts           # Generates /robots.txt
-│   └── globals.css         # CSS custom properties, Tailwind v4 theme
+│   ├── layout.tsx              # Root layout — fonts, metadata, OG/Twitter tags
+│   ├── page.tsx                # Async Server Component — IP/UA render
+│   ├── client-info.tsx         # Client Component — device & privacy sections
+│   ├── lookup-box.tsx          # Client Component — IP/domain query box + results
+│   ├── map-embed.tsx           # Shared component — OpenStreetMap iframe
+│   ├── api/lookup/route.ts     # GET /api/lookup?q= — arbitrary IP/domain lookup
+│   ├── loading.tsx             # Suspense skeleton shown during SSR fetch
+│   ├── error.tsx               # Error boundary for API failures
+│   ├── robots.ts               # Generates /robots.txt
+│   └── globals.css             # CSS custom properties, Tailwind v4 theme
 └── lib/
-    └── ip-info.ts          # Types + getIPInfo() + parseUserAgent() + isPrivateIP()
+    └── ip-info.ts              # Types + getIPInfo() + parseUserAgent() + isPrivateIP()
 ```
 
 ## Key Functionalities
@@ -58,9 +72,17 @@ src/
 - `isPrivateIP(ip)` — detects RFC-1918 ranges (10.x, 172.16–31.x, 192.168.x), loopback (127.x), link-local (169.254.x), and IPv6 loopback/link-local. Private IPs short-circuit `getIPInfo` without hitting the external API.
 - `parseUserAgent(ua)` — pure-function regex parser covering Windows, macOS, iOS, iPadOS, Android, ChromeOS, Linux; Edge, Opera, Brave, Chrome, Safari, Firefox.
 
+### IP/Domain Lookup (`src/app/lookup-box.tsx` + `src/app/api/lookup/route.ts`)
+
+A client-side query box accepts any IPv4 address, IPv6 address, or domain name (e.g. `8.8.8.8`, `2606:4700::`, `google.com`). On submit it calls `GET /api/lookup?q=<input>`, which proxies ip-api.com and returns the same `IPInfo` shape used by the server-side render. Results include a full Location grid, Network grid, and map. Private/local IPs are rejected with a 400 error. Submit fires on button click or Enter key.
+
+### Interactive Map (`src/app/map-embed.tsx`)
+
+Renders an OpenStreetMap `<iframe>` embed centered on the provided `lat`/`lon` with a `±0.08°` bounding box and a pin marker. Displayed in the Location section for both the visitor's own IP and any manual lookup result (only when coordinates are available). No API key required. A "View on OpenStreetMap" link opens the full map in a new tab.
+
 ### Server Component render (`src/app/page.tsx`)
 
-Reads `x-forwarded-for` and `x-real-ip` headers (set by Vercel / nginx / Cloudflare). Renders three static grid sections: Location (6 fields), Network (3 fields), Browser & OS (3 fields).
+Reads `x-forwarded-for` and `x-real-ip` headers (set by Vercel / nginx / Cloudflare). Renders: Location (6 fields + map), Network (3 fields), Browser & OS (3 fields), IP/Domain Lookup box.
 
 ### Client Component hydration (`src/app/client-info.tsx`)
 
