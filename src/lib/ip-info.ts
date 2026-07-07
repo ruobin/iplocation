@@ -157,72 +157,72 @@ export async function getIPInfo(
   };
 }
 
+interface DetectionRule {
+  name: string;
+  test: (ua: string) => boolean;
+  /** Static version, used when it can't be read from the UA string (e.g. Windows). */
+  version?: string;
+  /** Regex whose first capture group is the version; underscores are treated as dots. */
+  versionPattern?: RegExp;
+}
+
+const OS_RULES: DetectionRule[] = [
+  { name: "Windows", test: (ua) => ua.includes("Windows NT 10.0"), version: "10 / 11" },
+  { name: "Windows", test: (ua) => ua.includes("Windows NT 6.3"), version: "8.1" },
+  { name: "Windows", test: (ua) => ua.includes("Windows NT 6.1"), version: "7" },
+  { name: "macOS", test: (ua) => ua.includes("Mac OS X"), versionPattern: /Mac OS X ([0-9_]+)/ },
+  { name: "iOS", test: (ua) => ua.includes("iPhone"), versionPattern: /iPhone OS ([0-9_]+)/ },
+  { name: "iPadOS", test: (ua) => ua.includes("iPad"), versionPattern: /CPU OS ([0-9_]+)/ },
+  { name: "Android", test: (ua) => ua.includes("Android"), versionPattern: /Android ([0-9.]+)/ },
+  { name: "Linux", test: (ua) => ua.includes("Linux") },
+  { name: "ChromeOS", test: (ua) => ua.includes("CrOS") },
+];
+
+// Order matters: e.g. Edge/Opera/Brave also include "Chrome/", and Safari's
+// UA also includes "Safari/" without "Version/" on Chrome-based browsers.
+const BROWSER_RULES: DetectionRule[] = [
+  { name: "Edge", test: (ua) => ua.includes("Edg/"), versionPattern: /Edg\/([0-9.]+)/ },
+  {
+    name: "Opera",
+    test: (ua) => ua.includes("OPR/") || ua.includes("Opera/"),
+    versionPattern: /OPR\/([0-9.]+)/,
+  },
+  { name: "Brave", test: (ua) => ua.includes("Brave/"), versionPattern: /Brave\/([0-9.]+)/ },
+  { name: "Chrome", test: (ua) => ua.includes("Chrome/"), versionPattern: /Chrome\/([0-9.]+)/ },
+  {
+    name: "Safari",
+    test: (ua) => ua.includes("Safari/") && ua.includes("Version/"),
+    versionPattern: /Version\/([0-9.]+)/,
+  },
+  { name: "Firefox", test: (ua) => ua.includes("Firefox/"), versionPattern: /Firefox\/([0-9.]+)/ },
+];
+
+function detect(
+  rules: DetectionRule[],
+  ua: string,
+  fallbackName: string
+): { name: string; version: string } {
+  const rule = rules.find((r) => r.test(ua));
+  if (!rule) return { name: fallbackName, version: "" };
+
+  if (rule.version !== undefined) return { name: rule.name, version: rule.version };
+
+  const match = rule.versionPattern ? ua.match(rule.versionPattern) : null;
+  const version = match ? match[1].replace(/_/g, ".") : "";
+  return { name: rule.name, version };
+}
+
+function detectPlatform(ua: string): "Mobile" | "Tablet" | "Desktop" {
+  if (ua.includes("Mobile")) return "Mobile";
+  if (ua.includes("Tablet")) return "Tablet";
+  return "Desktop";
+}
+
 export function parseUserAgent(userAgent: string | null): BrowserInfo {
   const ua = userAgent ?? "";
 
-  let browser = "Unknown";
-  let browserVersion = "";
-  let os = "Unknown";
-  let osVersion = "";
-
-  // OS detection
-  if (ua.includes("Windows NT 10.0")) {
-    os = "Windows";
-    osVersion = "10 / 11";
-  } else if (ua.includes("Windows NT 6.3")) {
-    os = "Windows";
-    osVersion = "8.1";
-  } else if (ua.includes("Windows NT 6.1")) {
-    os = "Windows";
-    osVersion = "7";
-  } else if (ua.includes("Mac OS X")) {
-    os = "macOS";
-    const m = ua.match(/Mac OS X ([0-9_]+)/);
-    osVersion = m ? m[1].replace(/_/g, ".") : "";
-  } else if (ua.includes("iPhone")) {
-    os = "iOS";
-    const m = ua.match(/iPhone OS ([0-9_]+)/);
-    osVersion = m ? m[1].replace(/_/g, ".") : "";
-  } else if (ua.includes("iPad")) {
-    os = "iPadOS";
-    const m = ua.match(/CPU OS ([0-9_]+)/);
-    osVersion = m ? m[1].replace(/_/g, ".") : "";
-  } else if (ua.includes("Android")) {
-    os = "Android";
-    const m = ua.match(/Android ([0-9.]+)/);
-    osVersion = m ? m[1] : "";
-  } else if (ua.includes("Linux")) {
-    os = "Linux";
-  } else if (ua.includes("CrOS")) {
-    os = "ChromeOS";
-  }
-
-  // Browser detection
-  if (ua.includes("Edg/")) {
-    browser = "Edge";
-    const m = ua.match(/Edg\/([0-9.]+)/);
-    browserVersion = m ? m[1] : "";
-  } else if (ua.includes("OPR/") || ua.includes("Opera/")) {
-    browser = "Opera";
-    const m = ua.match(/OPR\/([0-9.]+)/);
-    browserVersion = m ? m[1] : "";
-  } else if (ua.includes("Brave/")) {
-    browser = "Brave";
-    const m = ua.match(/Brave\/([0-9.]+)/);
-    browserVersion = m ? m[1] : "";
-  } else if (ua.includes("Chrome/")) {
-    browser = "Chrome";
-    const m = ua.match(/Chrome\/([0-9.]+)/);
-    browserVersion = m ? m[1] : "";
-  } else if (ua.includes("Safari/") && ua.includes("Version/")) {
-    browser = "Safari";
-    const m = ua.match(/Version\/([0-9.]+)/);
-    browserVersion = m ? m[1] : "";
-  } else if (ua.includes("Firefox/")) {
-    browser = "Firefox";
-    const m = ua.match(/Firefox\/([0-9.]+)/);
-    browserVersion = m ? m[1] : "";
-  }
+  const { name: os, version: osVersion } = detect(OS_RULES, ua, "Unknown");
+  const { name: browser, version: browserVersion } = detect(BROWSER_RULES, ua, "Unknown");
 
   return {
     userAgent: ua,
@@ -230,7 +230,7 @@ export function parseUserAgent(userAgent: string | null): BrowserInfo {
     browserVersion,
     os,
     osVersion,
-    platform: ua.includes("Mobile") ? "Mobile" : ua.includes("Tablet") ? "Tablet" : "Desktop",
+    platform: detectPlatform(ua),
     language: "",
     languages: [],
   };
